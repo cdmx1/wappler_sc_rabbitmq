@@ -1,19 +1,26 @@
-// JavaScript Document
-// Roney 
+// Maintained by: Roney Dsilva 
 
-const { toSystemPath } = require('../../../lib/core/path');
 const amqp = require('amqplib');
-const rabbitmqReady = true
 
 var responseMessages = {};
 responseMessages['norabbitmq'] = { "response": 'Queue NOT created -- No rabbitmq connection.' };
 responseMessages['noqueue'] = { "response": 'Queue does not exist.' };
 
-async function connect(hostname) {
+async function connect(hostname, username, password) {
     try {
-        connection = await amqp.connect('amqp://'+hostname);
+        let connectionURL = `amqp://${hostname}`;
+        
+        if (username && password) {
+            connectionURL = `amqp://${username}:${password}@${hostname}`;
+            
+        }
+        connection = await amqp.connect(connectionURL);
+        connection.on('error', (err) => {
+            console.error('RabbitMQ Connection Error:', err.message);
+        });
+        return connection;
     } catch (error) {
-        console.log("Error connecting to the server:", error);
+        console.error("Error connecting to the server:", error.message);
         throw error;
     }
 }
@@ -27,28 +34,46 @@ async function createChannel(connection) {
         throw error;
     }
 }
+async function retryWithBackoff(fn, maxRetries, initialDelay) {
+    for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
+        try {
+            await fn(retryCount);
+            break; // Successful send, exit loop
+        } catch (error) {
+            console.log(`Error sending message to queue (retry ${retryCount}):`, error);
+            if (retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, initialDelay * Math.pow(2, retryCount)));
+            } else {
+                console.log(`Max retries reached. Error: ${error}`);
+                throw error;
+            }
+        }
+    }
+}
 
 exports.add_job = async function (options) {
-    if (rabbitmqReady) {
-        let delay_ms = parseInt(this.parseOptional(options.delay_ms, '*', 0));
-        let hostname = this.parse(options.hostname);
-        console.log(hostname)
-        var jobData = this.parse(options.bindings) || {}
-        await connect(hostname);
+    console.log(options)
+        const delay_ms = parseInt(this.parseOptional(options.delay_ms, '*', 0));
+        const hostname = this.parseRequired(options.hostname, 'string', 'Hostname is required');
+        const username = this.parse(options.username) || null;
+        const password = this.parse(options.password) || null;
+        const jobData = this.parseRequired(options.job_data, 'object', 'Job Data is required') || {}
+        const maxRetries = this.parse(options.max_retries) || 0;
+        const initialDelay = this.parse(options.intial_delay) || 1000; // in milliseconds
+        
+        await connect(hostname, username, password);
         const channel = await createChannel(connection);
         let queueName = this.parseRequired(options.queue_name, 'string', 'Queue name is required');
-        try {
+    
+        await retryWithBackoff(async (retryCount) => {
             await channel.assertQueue(queueName);
-            await channel.sendToQueue(queueName, Buffer.from(JSON.stringify(jobData)), { 
+            await channel.sendToQueue(queueName, Buffer.from(JSON.stringify(jobData)), {
                 properties: {
                     contentType: 'application/json',
                     headers: {
                         'x-delay': delay_ms,
-                      },
-                }});
-        } catch (error) {
-            console.log("Error sending message to queue:", error);
-            throw error;
-        }
-};
-};
+                    },
+                }
+            });
+        }, maxRetries, initialDelay);
+    };

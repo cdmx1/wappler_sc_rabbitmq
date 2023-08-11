@@ -58,27 +58,67 @@
             defaultValue: 'rabbit',
             serverDataBindings: true,
             help: 'Enter the Hostname/IP of the RabbitMQ Server.'
-        }
+        },
+        { 
+            name: 'username', 
+            optionName: 'username', 
+            title: 'Username', 
+            type: 'text', 
+            required: false, 
+            defaultValue: null,
+            serverDataBindings: true,
+            help: 'Enter the username to be used when connecting to RabbitMQ (Optional).'
+        },
+        { 
+            name: 'password', 
+            optionName: 'password', 
+            title: 'Password', 
+            type: 'text', 
+            required: false, 
+            defaultValue: null,
+            serverDataBindings: true,
+            help: 'Enter the password to be used when connecting to RabbitMQ (Optional).'
+        },
         ]
       },
         {
         group: 'Job Config',
         variables: [
-        { name: 'bindings', optionName: 'bindings', key: 'var', keyValue: 'value', title: 'PARAM\'s', type: 'grid', defaultValue: {}, serverDataBindings: true,
+        { name: 'job_data', optionName: 'job_data', key: 'key', keyValue: 'value', title: 'PARAM\'s', type: 'grid', defaultValue: {}, serverDataBindings: true,
                 columns: [
-                    { field: 'var', caption: 'Variable', size: '30%', editable: {type: 'text'}},
+                    { field: 'key', caption: 'Key', size: '30%', editable: {type: 'text'}},
                     { field: 'value', caption: 'Value', size: '70%', editable: {type: 'datapicker'}}]
         },
         { 
             name: 'delay_ms', 
             optionName: 'delay_ms', 
             title: 'Minimum delay', 
-            type: 'text', 
+            type: 'number', 
             required: false, 
             defaultValue: '0',
             serverDataBindings: true,
             help: 'When the delay time has passed the job will be moved to the beginning of the queue and be processed as soon as a worker is idle.'
         },
+        { 
+            name: 'max_retries', 
+            optionName: 'max_retries', 
+            title: 'Max Retries', 
+            type: 'number', 
+            required: false, 
+            defaultValue: 0,
+            serverDataBindings: true,
+            help: 'Max Retries.'
+        },
+        { 
+            name: 'intial_delay', 
+            optionName: 'intial_delay', 
+            title: 'Intial Delay', 
+            type: 'text', 
+            required: false, 
+            defaultValue: 1000,
+            serverDataBindings: true,
+            help: 'Initial delay before the first retry (in milliseconds).'
+        }
         ]
       }
   ]
