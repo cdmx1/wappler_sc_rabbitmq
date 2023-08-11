@@ -122,5 +122,89 @@
         ]
       }
   ]
+},
+{
+  type: 'rabbitmq_queues_get_jobs',
+  module : 'rabbitmq_queues',
+  action : 'get_jobs',
+  groupTitle : 'Rabbitmq Queues',
+  groupIcon : 'fas fa-solid fa-rabbit comp-exec',
+  title : 'Get Jobs @@var(actionName)@@',
+  icon : 'fad fa-album-collection comp-exec',
+  usedModules : {
+			node: {
+				 "amqplib": "^0.10.3",
+			}
+		},
+  dataPickObject: true,
+  properties : [
+      {
+        group: 'Step properties',
+        variables: [
+            { 
+            name: 'actionName', 
+            optionName: 'name', 
+            title: 'Name', 
+            type: 'text', 
+            required: true, 
+            defaultValue: ''
+        },
+        
+        { 
+            name: 'output', 
+            optionName: 'output', 
+            title: 'Output', 
+            type: 'boolean', 
+            defaultValue: false 
+        }
+        ]
+      },
+      {
+        group: 'Queue Config',
+        variables: [
+            
+          { 
+            name: 'queue_name', 
+            optionName: 'queue_name', 
+            title: 'Queue name', 
+            type: 'text', 
+            required: true, 
+            defaultValue: '',
+            serverDataBindings: true,
+            help: 'Select the queue that will process this job.'
+        },
+        { 
+            name: 'hostname', 
+            optionName: 'hostname', 
+            title: 'RabbitMQ Server Host', 
+            type: 'text', 
+            required: true, 
+            defaultValue: 'rabbit',
+            serverDataBindings: true,
+            help: 'Enter the Hostname/IP of the RabbitMQ Server.'
+        },
+        { 
+            name: 'username', 
+            optionName: 'username', 
+            title: 'Username', 
+            type: 'text', 
+            required: false, 
+            defaultValue: null,
+            serverDataBindings: true,
+            help: 'Enter the username to be used when connecting to RabbitMQ (Optional).'
+        },
+        { 
+            name: 'password', 
+            optionName: 'password', 
+            title: 'Password', 
+            type: 'text', 
+            required: false, 
+            defaultValue: null,
+            serverDataBindings: true,
+            help: 'Enter the password to be used when connecting to RabbitMQ (Optional).'
+        }
+        ]
+      }
+  ]
 }
 ]

@@ -1,18 +1,12 @@
 // Maintained by: Roney Dsilva 
 
 const amqp = require('amqplib');
-
-var responseMessages = {};
-responseMessages['norabbitmq'] = { "response": 'Queue NOT created -- No rabbitmq connection.' };
-responseMessages['noqueue'] = { "response": 'Queue does not exist.' };
-
-async function connect(hostname, username, password) {
+async function connect(context, hostname, username, password) {
     try {
         let connectionURL = `amqp://${hostname}`;
         
         if (username && password) {
             connectionURL = `amqp://${username}:${password}@${hostname}`;
-            
         }
         connection = await amqp.connect(connectionURL);
         connection.on('error', (err) => {
@@ -20,12 +14,17 @@ async function connect(hostname, username, password) {
         });
         return connection;
     } catch (error) {
-        console.error("Error connecting to the server:", error.message);
+        if (error.message.includes('ACCESS_REFUSED')) {
+            const errorMessage = "Authentication failed. Please check your credentials.";
+            context.res.status(403).json({ message: errorMessage });
+        } else {
+            console.error("Error connecting to the server:", error.message);
+        }
         throw error;
     }
 }
-let connection;
-async function createChannel(connection) {
+
+async function createChannel(context, connection) {
     try {
         const channel = await connection.createChannel();
         return channel;
@@ -34,10 +33,11 @@ async function createChannel(connection) {
         throw error;
     }
 }
-async function retryWithBackoff(fn, maxRetries, initialDelay) {
+
+async function retryWithBackoff(context, fn, maxRetries, initialDelay) {
     for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
         try {
-            await fn(retryCount);
+            await fn(context, retryCount);
             break; // Successful send, exit loop
         } catch (error) {
             console.log(`Error sending message to queue (retry ${retryCount}):`, error);
@@ -52,7 +52,6 @@ async function retryWithBackoff(fn, maxRetries, initialDelay) {
 }
 
 exports.add_job = async function (options) {
-    console.log(options)
         const delay_ms = parseInt(this.parseOptional(options.delay_ms, '*', 0));
         const hostname = this.parseRequired(options.hostname, 'string', 'Hostname is required');
         const username = this.parse(options.username) || null;
@@ -61,13 +60,13 @@ exports.add_job = async function (options) {
         const maxRetries = this.parse(options.max_retries) || 0;
         const initialDelay = this.parse(options.intial_delay) || 1000; // in milliseconds
         
-        await connect(hostname, username, password);
-        const channel = await createChannel(connection);
+        await connect(this, hostname, username, password);
+        const channel = await createChannel(this, connection);
         let queueName = this.parseRequired(options.queue_name, 'string', 'Queue name is required');
     
-        await retryWithBackoff(async (retryCount) => {
-            await channel.assertQueue(queueName);
-            await channel.sendToQueue(queueName, Buffer.from(JSON.stringify(jobData)), {
+        await retryWithBackoff(this, async (context, retryCount) => {
+            await context.channel.assertQueue(queueName);
+            await context.channel.sendToQueue(queueName, Buffer.from(JSON.stringify(jobData)), {
                 properties: {
                     contentType: 'application/json',
                     headers: {
@@ -77,3 +76,25 @@ exports.add_job = async function (options) {
             });
         }, maxRetries, initialDelay);
     };
+exports.get_jobs = async function (options) {
+    const hostname = this.parseRequired(options.hostname, 'string', 'Hostname is required');
+    const username = this.parse(options.username) || null;
+    const password = this.parse(options.password) || null;
+    const queueName = this.parseRequired(options.queue_name, 'string', 'Queue name is required');
+
+    await connect(this, hostname, username, password);
+    const channel = await createChannel(this, connection);
+
+    const { messageCount } = await channel.checkQueue(queueName);
+
+    const jobs = [];
+
+    for (let i = 0; i < messageCount; i++) {
+        const message = await channel.get(queueName);
+        if (message !== false) {
+            jobs.push(JSON.parse(message.content.toString()));
+        }
+    }
+
+    return jobs;
+};
