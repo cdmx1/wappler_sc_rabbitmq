@@ -60,13 +60,13 @@ exports.add_job = async function (options) {
         const maxRetries = this.parse(options.max_retries) || 0;
         const initialDelay = this.parse(options.intial_delay) || 1000; // in milliseconds
         
-        await connect(this, hostname, username, password);
+        const connection = await connect(this, hostname, username, password);
         const channel = await createChannel(this, connection);
         let queueName = this.parseRequired(options.queue_name, 'string', 'Queue name is required');
     
         await retryWithBackoff(this, async (context, retryCount) => {
-            await context.channel.assertQueue(queueName);
-            await context.channel.sendToQueue(queueName, Buffer.from(JSON.stringify(jobData)), {
+            await channel.assertQueue(queueName);
+            await channel.sendToQueue(queueName, Buffer.from(JSON.stringify(jobData)), {
                 properties: {
                     contentType: 'application/json',
                     headers: {
