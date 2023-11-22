@@ -1,14 +1,23 @@
 // Maintained by: Roney Dsilva 
 
 const amqp = require('amqplib');
-async function connect(context, hostname, username, password) {
+async function connect(context, hostname, username, password, timeout = 5000) {
     try {
         let connectionURL = `amqp://${hostname}`;
         
         if (username && password) {
             connectionURL = `amqp://${username}:${password}@${hostname}`;
         }
-        connection = await amqp.connect(connectionURL);
+        
+        let connectionPromise = amqp.connect(connectionURL);
+        let timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(new Error('Connection attempt timed out'));
+            }, timeout);
+        });
+
+        let connection = await Promise.race([connectionPromise, timeoutPromise]);
+        
         connection.on('error', (err) => {
             console.error('RabbitMQ Connection Error:', err.message);
         });
@@ -33,6 +42,47 @@ async function createChannel(context, connection) {
         throw error;
     }
 }
+
+async function checkRabbitMQHealth(connection, queues) {
+    try {
+        const channel = await connection.createChannel();
+
+        const queueCounts = [];
+        let allQueuesHealthy = true;
+        let totalMessageCount = 0;
+        for (const queue of queues) {
+            try {
+                const response = await channel.assertQueue(queue);
+                const messageCount = response.messageCount;
+
+                if (messageCount === undefined || messageCount === null || messageCount < 0) {
+                    allQueuesHealthy = false;
+                } else {
+                    totalMessageCount += messageCount;
+                }
+            } catch (error) {
+                if (error.code === 404 && error.message.includes('no queue')) {
+                    allQueuesHealthy = false;
+                } else {
+                    throw error;
+                }
+            }
+        }
+        await channel.close();
+
+        return {
+            status: allQueuesHealthy,
+            message_count: totalMessageCount
+        };
+    } catch (error) {
+        console.error("Error checking RabbitMQ health:", error.message);
+        return {
+            status: false,
+            message_count : 0
+        };
+    }
+}
+
 
 async function retryWithBackoff(context, fn, maxRetries, initialDelay) {
     for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
@@ -97,4 +147,36 @@ exports.get_jobs = async function (options) {
     }
 
     return jobs;
+}
+
+exports.check_rabbitmq_health = async function (options) {
+    const hostname = this.parseRequired(options.hostname, 'string', 'Hostname is required');
+    const queues = this.parseRequired(options.queues, 'string', 'Queues to check are required').split(',');
+    const username = this.parse(options.username) || null;
+    const password = this.parse(options.password) || null;
+    const timeout = this.parse(options.timeout);
+    let connection;
+    try {
+        connection = await connect(this, hostname, username, password, timeout);
+        console.log('Connected to RabbitMQ.');
+
+        const healthInfo = await checkRabbitMQHealth(connection, queues);
+        console.log('RabbitMQ Health Information:', healthInfo);
+        return healthInfo;
+    } catch (error) {
+        console.error('Error occurred:', error.message);
+        return {
+            status: false,
+            message_count : 0
+        };
+    } finally {
+        if (connection) {
+            try {
+                await connection.close();
+                console.log('Connection closed.');
+            } catch (err) {
+                console.error('Error closing connection:', err.message);
+            }
+        }
+    }
 };
