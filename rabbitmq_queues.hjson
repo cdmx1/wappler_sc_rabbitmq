@@ -248,6 +248,7 @@
             "title": "Queues to Check",
             "type": "text",
             "required": true,
+            "serverDataBindings": true,
             "help": "Comma-Seperated Queue Names"
           },
         { 
